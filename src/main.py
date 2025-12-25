@@ -102,6 +102,13 @@ class SARSCoV2Analyzer:
             else:
                 logger.info("跳过数据下载步骤，使用现有数据")
                 gene_sequences = self._load_existing_sequences(genes)
+
+                if not gene_sequences:
+                    logger.error("未加载到任何基因序列：无法在 --skip-download 模式下继续分析")
+                    logger.error("解决方法：")
+                    logger.error("1) 去掉 --skip-download 让程序自动下载；或")
+                    logger.error("2) 手动将序列文件放入 data/sequences/，命名如：data/sequences/sars_cov2_rdrp.fasta")
+                    return False
             
             # 2. RNA结构预测
             logger.info("="*50)

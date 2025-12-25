@@ -91,7 +91,7 @@ def check_dependencies():
     logger.info("检查系统依赖...")
     
     required_packages = [
-        'biopython', 'pandas', 'numpy', 'matplotlib', 
+        'Bio', 'pandas', 'numpy', 'matplotlib',
         'seaborn', 'plotly', 'tqdm'
     ]
     

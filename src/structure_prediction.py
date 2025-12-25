@@ -43,6 +43,7 @@ class RNAStructurePredictor:
         logger.info(f"使用RNAfold预测{seq_name}的结构...")
         
         try:
+            sequence = sequence.upper().replace('T', 'U')
             # 创建临时文件
             with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta', delete=False) as tmp_file:
                 tmp_file.write(f">{seq_name}\n{sequence}\n")
@@ -127,44 +128,62 @@ class RNAStructurePredictor:
             包含配对概率矩阵的字典
         """
         logger.info(f"计算{seq_name}的碱基配对概率...")
-        
+
+        sequence = sequence.upper().replace('T', 'U')
+
         try:
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta', delete=False) as tmp_file:
-                tmp_file.write(f">{seq_name}\n{sequence}\n")
-                tmp_file_path = tmp_file.name
-            
-            # 运行RNAplfold
-            result = subprocess.run(
-                ['RNAplfold', '-W', '150', '-L', '150', '-u', '1', tmp_file_path],
-                capture_output=True,
-                text=True,
-                timeout=600  # 10分钟超时
-            )
-            
-            # 清理临时文件
-            os.unlink(tmp_file_path)
-            
-            if result.returncode != 0:
-                logger.error(f"RNAplfold计算失败: {result.stderr}")
-                return None
-            
-            # 解析输出文件
-            dp_file = Path(f"{seq_name}_dp.ps")  # RNAplfold输出文件
-            if dp_file.exists():
-                # 这里简化处理，实际需要解析.ps文件中的概率信息
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir_path = Path(tmpdir)
+                fasta_content = f">{seq_name}\n{sequence}\n"
+
+                result = subprocess.run(
+                    ['RNAplfold', '-W', '150', '-L', '150', '-u', '1'],
+                    input=fasta_content,
+                    capture_output=True,
+                    text=True,
+                    cwd=tmpdir_path,
+                    timeout=600
+                )
+
+                if result.returncode != 0:
+                    logger.error(f"RNAplfold计算失败: {result.stderr}")
+                    return None
+
+                # RNAplfold 输出文件名通常基于序列 header（如 RdRp_dp.ps / RdRp_lunp）
+                dp_file = tmpdir_path / f"{seq_name}_dp.ps"
+                lunp_file = tmpdir_path / f"{seq_name}_lunp"
+
+                # 兼容不同版本输出
+                if not dp_file.exists():
+                    dp_file = tmpdir_path / "plfold_dp.ps"
+                if not lunp_file.exists():
+                    lunp_file = tmpdir_path / "plfold_lunp"
+
+                # 将输出文件拷贝到 data/structures 以便后续查看（如果存在）
+                saved = {}
+                if dp_file.exists():
+                    target = self.results_dir / f"{seq_name}_plfold_dp.ps"
+                    target.write_text(dp_file.read_text(encoding='utf-8', errors='ignore'), encoding='utf-8')
+                    saved["dp_ps"] = str(target)
+                if lunp_file.exists():
+                    target = self.results_dir / f"{seq_name}_plfold_lunp"
+                    target.write_text(lunp_file.read_text(encoding='utf-8', errors='ignore'), encoding='utf-8')
+                    saved["lunp"] = str(target)
+
                 return {
                     "method": "RNAplfold",
                     "sequence_length": len(sequence),
-                    "unstructured_prob_file": f"{seq_name}_lunp",
-                    "note": "配对概率已计算，详见输出文件"
+                    "outputs": saved,
+                    "note": "配对概率已计算（输出文件已保存到 data/structures/）"
                 }
-            
+
         except subprocess.TimeoutExpired:
             logger.error(f"RNAplfold计算{seq_name}超时")
+        except FileNotFoundError:
+            logger.warning("未找到RNAplfold命令，跳过配对概率计算")
         except Exception as e:
             logger.error(f"RNAplfold计算{seq_name}失败: {e}")
-        
+
         return None
     
     def analyze_structural_features(self, sequence: str, structure: str) -> Dict:
@@ -337,7 +356,7 @@ class RNAStructurePredictor:
             with open(structure_file, 'w') as f:
                 f.write(f">{gene_name} RNAfold structure\n")
                 f.write(f"{prediction['rnafold']['structure']}\n")
-                if prediction['rnafold']['energy']:
+                if prediction['rnafold']['energy'] is not None:
                     f.write(f"Energy: {prediction['rnafold']['energy']} kcal/mol\n")
         
         logger.info(f"{gene_name}预测结果已保存")

@@ -76,62 +76,70 @@ class ProteinBindingPredictor:
         logger.info(f"计算{gene_name}的RNA可及性...")
         
         try:
-            # 创建临时文件
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.fasta', delete=False) as tmp_file:
-                tmp_file.write(f">{gene_name}\n{sequence}\n")
-                tmp_file_path = tmp_file.name
-            
-            # 运行RNAplfold计算无规卷曲概率
-            result = subprocess.run(
-                ['RNAplfold', '-W', '150', '-L', '150', '-u', '30', tmp_file_path],
-                capture_output=True,
-                text=True,
-                timeout=600
-            )
-            
-            # 清理临时文件
-            os.unlink(tmp_file_path)
-            
-            if result.returncode != 0:
-                logger.error(f"RNAplfold计算失败: {result.stderr}")
-                return None
-            
-            # 读取无规卷曲概率文件
-            lunp_file = Path(f"{gene_name}_lunp")
-            if not lunp_file.exists():
-                logger.warning(f"未找到{gene_name}的无规卷曲概率文件")
-                return None
-            
-            # 解析无规卷曲概率
-            accessibility_scores = []
-            with open(lunp_file, 'r') as f:
-                for line in f:
-                    if line.startswith('#'):
-                        continue
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        pos = int(parts[0])
-                        prob = float(parts[1])
-                        accessibility_scores.append(prob)
-            
-            # 清理输出文件
-            if lunp_file.exists():
-                lunp_file.unlink()
-            
-            # 计算统计信息
-            avg_accessibility = np.mean(accessibility_scores)
-            high_accessibility_threshold = np.percentile(accessibility_scores, 80)
-            high_accessibility_positions = [i for i, score in enumerate(accessibility_scores) 
-                                         if score >= high_accessibility_threshold]
-            
-            return {
-                'accessibility_scores': accessibility_scores,
-                'average_accessibility': avg_accessibility,
-                'high_accessibility_threshold': high_accessibility_threshold,
-                'high_accessibility_positions': high_accessibility_positions,
-                'sequence_length': len(sequence)
-            }
-            
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmpdir_path = Path(tmpdir)
+
+                # RNAplfold 读取 stdin；输出文件名通常基于序列 header（如 RdRp_lunp / RdRp_dp.ps）
+                fasta_content = f">{gene_name}\n{sequence}\n"
+
+                result = subprocess.run(
+                    ['RNAplfold', '-W', '150', '-L', '150', '-u', '30'],
+                    input=fasta_content,
+                    cwd=tmpdir_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=600
+                )
+
+                if result.returncode != 0:
+                    logger.error(f"RNAplfold计算失败: {result.stderr}")
+                    return None
+
+                lunp_file = tmpdir_path / f"{gene_name}_lunp"
+                if not lunp_file.exists():
+                    # 兼容不同版本输出
+                    lunp_file = tmpdir_path / "plfold_lunp"
+                if not lunp_file.exists():
+                    logger.warning(f"未找到{gene_name}的无规卷曲概率文件（*_lunp）")
+                    return None
+
+                # 解析无规卷曲概率
+                # plfold_lunp 可能包含多列（不同片段长度），这里取最后一列作为 -u 30 的结果
+                accessibility_scores: List[float] = []
+                with open(lunp_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    for line in f:
+                        if not line.strip() or line.startswith('#'):
+                            continue
+                        parts = line.strip().split()
+                        if len(parts) >= 2:
+                            try:
+                                prob = float(parts[-1])
+                            except ValueError:
+                                continue
+                            accessibility_scores.append(prob)
+
+                if not accessibility_scores:
+                    logger.warning(f"{gene_name}无规卷曲概率解析结果为空")
+                    return None
+
+                avg_accessibility = float(np.mean(accessibility_scores))
+                high_accessibility_threshold = float(np.percentile(accessibility_scores, 80))
+                high_accessibility_positions = [
+                    i for i, score in enumerate(accessibility_scores)
+                    if score >= high_accessibility_threshold
+                ]
+
+                return {
+                    'accessibility_scores': accessibility_scores,
+                    'average_accessibility': avg_accessibility,
+                    'high_accessibility_threshold': high_accessibility_threshold,
+                    'high_accessibility_positions': high_accessibility_positions,
+                    'sequence_length': len(sequence)
+                }
+
+        except FileNotFoundError:
+            logger.warning("未找到RNAplfold命令，可及性分析将被跳过")
+            return None
         except subprocess.TimeoutExpired:
             logger.error(f"RNAplfold计算{gene_name}超时")
             return None
@@ -396,8 +404,8 @@ class ProteinBindingPredictor:
         
         return structural_sites
     
-    def integrate_predictions(self, motif_sites: List[Dict], structural_sites: List[Dict], 
-                            conservation_data: Optional[Dict] = None) -> List[Dict]:
+    def integrate_predictions(self, motif_sites: List[Dict], structural_sites: List[Dict],
+                              sequence: str, conservation_data: Optional[Dict] = None) -> List[Dict]:
         """
         整合不同方法的预测结果
         Args:
@@ -411,20 +419,25 @@ class ProteinBindingPredictor:
         
         all_sites = motif_sites + structural_sites
         
-        # 如果有保守性数据，用于调整置信度
-        if conservation_data and 'high_conservation_positions' in conservation_data:
-            high_cons_positions = set(conservation_data['high_conservation_positions'])
-            
+        # 如果有保守性数据，用于调整置信度（兼容 main.py 传入的整包结构）
+        high_positions = None
+        if isinstance(conservation_data, dict):
+            if 'high_conservation_positions' in conservation_data:
+                high_positions = conservation_data.get('high_conservation_positions')
+            elif isinstance(conservation_data.get('sequence_conservation'), dict):
+                high_positions = conservation_data['sequence_conservation'].get('high_conservation_positions')
+
+        if high_positions:
+            high_cons_positions = set(high_positions)
+
             for site in all_sites:
-                # 检查位点是否与高保守性区域重叠
                 site_overlap = 0
                 for pos in range(site['start'] - 1, site['end']):
                     if pos in high_cons_positions:
                         site_overlap += 1
-                
+
                 overlap_ratio = site_overlap / (site['end'] - site['start'] + 1)
-                
-                # 如果与高保守性区域重叠，提高置信度
+
                 if overlap_ratio > 0.5:
                     site['confidence'] = min(site['confidence'] * 1.2, 1.0)
                     site['conservation_boost'] = True
@@ -432,9 +445,9 @@ class ProteinBindingPredictor:
                 else:
                     site['conservation_boost'] = False
                     site['conservation_overlap'] = overlap_ratio
-        
+
         # 去重：合并重叠的预测位点
-        merged_sites = self._merge_overlapping_sites(all_sites)
+        merged_sites = self._merge_overlapping_sites(all_sites, sequence)
         
         # 按置信度排序
         merged_sites.sort(key=lambda x: x['confidence'], reverse=True)
@@ -442,25 +455,24 @@ class ProteinBindingPredictor:
         logger.info(f"整合后得到{len(merged_sites)}个蛋白结合位点")
         return merged_sites
     
-    def _merge_overlapping_sites(self, sites: List[Dict]) -> List[Dict]:
+    def _merge_overlapping_sites(self, sites: List[Dict], sequence: str) -> List[Dict]:
         """合并重叠的结合位点"""
         if not sites:
             return []
-        
-        # 按起始位置排序
+
         sorted_sites = sorted(sites, key=lambda x: x['start'])
         merged = [sorted_sites[0]]
-        
+
         for current in sorted_sites[1:]:
             last = merged[-1]
-            
-            # 检查是否重叠
+
             if current['start'] <= last['end']:
-                # 合并位点
+                start = min(last['start'], current['start'])
+                end = max(last['end'], current['end'])
                 merged_site = {
-                    'start': min(last['start'], current['start']),
-                    'end': max(last['end'], current['end']),
-                    'sequence': sequence[min(last['start'], current['start'])-1:max(last['end'], current['end'])],
+                    'start': start,
+                    'end': end,
+                    'sequence': sequence[start - 1:end],
                     'protein': f"{last['protein']}/{current['protein']}",
                     'binding_type': f"{last['binding_type']}+{current['binding_type']}",
                     'description': f"{last['description']} + {current['description']}",
@@ -470,7 +482,7 @@ class ProteinBindingPredictor:
                 merged[-1] = merged_site
             else:
                 merged.append(current)
-        
+
         return merged
     
     def predict_protein_binding_sites(self, gene_name: str, sequence: str, structure: str, 
@@ -486,6 +498,7 @@ class ProteinBindingPredictor:
             蛋白结合位点预测结果
         """
         logger.info(f"开始预测{gene_name}的蛋白结合位点...")
+        sequence = sequence.upper().replace('T', 'U')
         
         # 1. 计算可及性
         accessibility = self.calculate_accessibility(sequence, gene_name)
@@ -499,7 +512,7 @@ class ProteinBindingPredictor:
             structural_sites = self.predict_structural_binding_sites(sequence, structure, accessibility)
         
         # 4. 整合预测结果
-        integrated_sites = self.integrate_predictions(motif_sites, structural_sites, conservation_data)
+        integrated_sites = self.integrate_predictions(motif_sites, structural_sites, sequence, conservation_data)
         
         # 5. 生成统计信息
         high_confidence_sites = [site for site in integrated_sites if site['confidence'] >= 0.7]

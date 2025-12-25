@@ -16,14 +16,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 
-# 尝试导入forgi
-try:
-    import forgi.visual.mplotlib as fvm
-    import forgi.graph.bulge_graph as fgb
-    FORGI_AVAILABLE = True
-except ImportError:
-    FORGI_AVAILABLE = False
-    logging.warning("forgi未安装，将使用简化可视化")
+# forgi 改为延迟导入：避免在 import 时触发 numpy ABI 等问题
+FORGI_AVAILABLE = False
 
 # 尝试导入py3Dmol
 try:
@@ -69,11 +63,20 @@ class RNAStructureVisualizer:
         Returns:
             是否成功绘制
         """
-        if not FORGI_AVAILABLE:
-            logger.warning("forgi不可用，跳过2D结构绘制")
-            return False
-        
         try:
+            # numpy>=2 时，forgi 很容易因 ABI 不兼容而报错；直接跳过避免噪声
+            try:
+                numpy_major = int(str(np.__version__).split(".", 1)[0])
+            except Exception:
+                numpy_major = 0
+
+            if numpy_major >= 2:
+                logger.warning("检测到 numpy>=2，跳过 forgi 2D 结构绘制（避免ABI不兼容）")
+                return False
+
+            import forgi.visual.mplotlib as fvm
+            import forgi.graph.bulge_graph as fgb
+
             logger.info(f"绘制{gene_name}的2D RNA结构...")
             
             # 创建dot-bracket格式文件
@@ -166,7 +169,7 @@ class RNAStructureVisualizer:
                 start = stack.pop()
                 # 绘制弧线
                 x = np.linspace(start, i, 50)
-                y = np.sqrt(max(0, (i-start)**2/4 - (x - (start+i)/2)**2))
+                y = np.sqrt(np.maximum(0, (i-start)**2/4 - (x - (start+i)/2)**2))
                 ax2.plot(x, y, color=self.colors['stem'], alpha=0.6, linewidth=1)
         
         # 绘制序列轴线
@@ -193,10 +196,18 @@ class RNAStructureVisualizer:
         """
         logger.info(f"绘制{gene_name}的保守性热图...")
         
-        # 准备数据
-        if isinstance(conservation_data, dict) and 'scores' in conservation_data:
+        # 准备数据（兼容不同模块输出字段）
+        if not isinstance(conservation_data, dict):
+            logger.warning("保守性数据格式不正确")
+            return
+        if 'scores' in conservation_data:
             scores = conservation_data['scores']
+        elif 'conservation_scores' in conservation_data:
+            scores = conservation_data['conservation_scores']
         else:
+            scores = None
+
+        if not scores:
             logger.warning("保守性数据格式不正确")
             return
         
@@ -389,7 +400,7 @@ class RNAStructureVisualizer:
             elif char == ')' and stack:
                 start = stack.pop()
                 x_arc = np.linspace(start, i, 50)
-                y_arc = np.sqrt(max(0, (i-start)**2/4 - (x_arc - (start+i)/2)**2))
+                y_arc = np.sqrt(np.maximum(0, (i-start)**2/4 - (x_arc - (start+i)/2)**2))
                 
                 fig.add_trace(
                     go.Scatter(
@@ -622,8 +633,7 @@ def main():
                 # 生成各种可视化
                 visualizer.plot_structure_simple(gene_name, structure, sequence)
                 
-                if FORGI_AVAILABLE:
-                    visualizer.plot_structure_2d_forgi(gene_name, structure, sequence)
+                visualizer.plot_structure_2d_forgi(gene_name, structure, sequence)
                 
                 visualizer.create_interactive_plot(gene_name, sequence, structure)
             

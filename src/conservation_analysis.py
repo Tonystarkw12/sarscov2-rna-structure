@@ -13,7 +13,12 @@ import pandas as pd
 import numpy as np
 from Bio import SeqIO, AlignIO, Phylo
 from Bio.Align import MultipleSeqAlignment
-from Bio.Align.Applications import MafftCommandline
+
+# Biopython 新版本已移除 Bio.Align.Applications；这里不再依赖其封装
+try:
+    from Bio.Align.Applications import MafftCommandline  # type: ignore
+except Exception:
+    MafftCommandline = None
 import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Dict, List, Tuple, Optional
@@ -75,10 +80,26 @@ class ConservationAnalyzer:
             # 输出文件路径
             output_file = self.alignments_dir / f"{gene_name}_alignment.fasta"
             
-            # 运行MAFFT
-            mafft_cline = MafftCommandline(input=tmp_file_path, auto=True, thread=4)
-            stdout, stderr = mafft_cline()
-            
+            # 运行MAFFT（优先直接调用系统命令，避免依赖 Biopython 的旧封装）
+            try:
+                result = subprocess.run(
+                    ["mafft", "--auto", "--thread", "4", tmp_file_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+            except FileNotFoundError:
+                logger.error("未找到mafft命令，请先安装MAFFT")
+                os.unlink(tmp_file_path)
+                return None
+
+            if result.returncode != 0:
+                logger.error(f"{gene_name}多序列比对失败: {result.stderr}")
+                os.unlink(tmp_file_path)
+                return None
+
+            stdout = result.stdout
+
             # 清理临时文件
             os.unlink(tmp_file_path)
             
