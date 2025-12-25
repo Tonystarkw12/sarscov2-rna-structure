@@ -1,0 +1,10 @@
+﻿文件名,序列ID,描述,长度(nt),GC含量(%)
+sars_cov2_m.fasta,NC_045512.2_M,NC_045512.2_M SARS-CoV-2 M gene (膜蛋白),669,42.6
+sars_genome.fasta,NC_004718.3,"NC_004718.3 SARS coronavirus Tor2, complete genome",29751,40.76
+mers_genome.fasta,NC_019843.3,"NC_019843.3 Middle East respiratory syndrome-related coronavirus isolate HCoV-EMC/2012, complete genome",30119,41.24
+sars_cov_2_omicron_genome.fasta,OM061194.1,"OM061194.1 Severe acute respiratory syndrome coronavirus 2 isolate SARS-CoV-2/human/USA/MN-CDC-IBX256505257035/2021, complete genome",29829,37.95
+sars_cov2_s.fasta,NC_045512.2_S,NC_045512.2_S SARS-CoV-2 S gene (刺突蛋白),3822,37.31
+sars_cov2_genome.fasta,NC_045512.2,"NC_045512.2 Severe acute respiratory syndrome coronavirus 2 isolate Wuhan-Hu-1, complete genome",29903,37.97
+sars_cov2_n.fasta,NC_045512.2_N,NC_045512.2_N SARS-CoV-2 N gene (核衣壳蛋白),1260,47.22
+sars_cov2_rdrp.fasta,NC_045512.2_RdRp,NC_045512.2_RdRp SARS-CoV-2 RdRp gene (RNA依赖的RNA聚合酶),3290,41.25
+sars_cov2_e.fasta,NC_045512.2_E,NC_045512.2_E SARS-CoV-2 E gene (包膜蛋白),228,38.16

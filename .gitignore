@@ -37,11 +37,11 @@ data/structures/*.dot
 data/alignments/*.aln
 
 # Results
-results/figures/*.png
-results/figures/*.pdf
-results/figures/*.svg
-results/tables/*.csv
-results/reports/*.html
+# results/figures/*.png
+# results/figures/*.pdf
+# results/figures/*.svg
+# results/tables/*.csv
+# results/reports/*.html
 
 # Logs
 *.log
