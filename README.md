@@ -298,8 +298,8 @@ sarscov2rna/
 ## 联系方式
 
 如有问题或建议，请通过以下方式联系：
-- 项目Issues: [GitHub Issues页面]
-- 邮箱: [您的邮箱]
+- 邮箱: zhou-zh23@mails.tsinghua.edu.cn
+- 作者：周子航
 
 ## 许可证
 
