@@ -27,23 +27,168 @@ except ImportError:
     PY3DMOL_AVAILABLE = False
     logging.warning("py3Dmol未安装，3D可视化功能受限")
 
-# 设置中文字体和样式
-plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
-sns.set_style("whitegrid")
-
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# 设置字体和样式 - 自动检测可用字体
+import matplotlib.font_manager as fm
+
+def get_chinese_font():
+    """获取可用的中文字体,如果没有则使用默认字体"""
+    # 常见的中文字体列表(按优先级排序)
+    chinese_fonts = [
+        'WenQuanYi Micro Hei',      # 文泉驿微米黑
+        'WenQuanYi Zen Hei',        # 文泉驿正黑
+        'Noto Sans CJK SC',         # Noto Sans CJK
+        'Droid Sans Fallback',      # Droid Sans
+        'AR PL UMing CN',           # 文鼎PL明体
+        'AR PL UKai CN',            # 文鼎PL楷体
+        'SimHei',                   # 黑体(Windows)
+        'Microsoft YaHei',          # 微软雅黑(Windows)
+        'PingFang SC',              # 苹方(macOS)
+        'DejaVu Sans',              # DejaVu(通用)
+    ]
+
+    # 获取系统所有可用字体
+    available_fonts = [f.name for f in fm.fontManager.ttflist]
+
+    # 查找第一个可用的中文字体
+    for font in chinese_fonts:
+        if font in available_fonts:
+            logger.info(f"使用字体: {font}")
+            return font
+
+    # 如果没有找到中文字体,使用默认字体并警告
+    logger.warning("未找到中文字体,将使用默认字体(可能出现中文显示问题)")
+    logger.warning("建议安装中文字体: sudo apt install fonts-wqy-microhei fonts-wqy-zenhei")
+    return 'DejaVu Sans'
+
+# 应用字体配置
+chinese_font = get_chinese_font()
+plt.rcParams['font.sans-serif'] = [chinese_font, 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+plt.rcParams['font.size'] = 10
+sns.set_style("whitegrid")
+
 class RNAStructureVisualizer:
     """RNA结构可视化器"""
-    
-    def __init__(self):
+
+    # 中英文标签映射
+    LABELS = {
+        'zh': {  # 中文标签
+            'nucleotide_position': '核苷酸位置',
+            'sequence_length': '序列长度 (nt)',
+            'gc_content': 'GC含量 (%)',
+            'conservation_score': '保守性分数',
+            'pairing_rate': '配对率 (%)',
+            'base_pairs': '碱基对数量',
+            'stem_count': '茎区数量',
+            'structure_state': '结构状态',
+            'pairing_height': '配对高度',
+            'stem_region': '茎区',
+            'unpaired': '未配对',
+            'loop_region': '环区',
+            'sequence_structure': '序列-结构对应',
+            'structure_features': '结构特征',
+            'basic_stats': '基本结构统计',
+            'sequence_composition': '序列组成分析',
+            'motif_distribution': '结构基序分布',
+            'sequence_info': '序列信息',
+            'quantity': '数量',
+            'conservation': '保守性',
+            'structure_complexity': '结构复杂度',
+            'free_energy': '自由能 (kcal/mol)',
+            'complexity_score': '复杂度评分',
+            'analysis_summary': '分析总结',
+            'main_findings': '主要发现',
+            'longest_sequence': '最长序列',
+            'highest_gc': '最高GC含量',
+            'highest_pairing': '最高配对率',
+            'gene_count': '分析基因数',
+            'avg_length': '平均序列长度',
+            'avg_gc': '平均GC含量',
+            'avg_pairing': '平均配对率',
+            'total_base_pairs': '总碱基对数',
+            'length_comparison': '各基因序列长度对比',
+            'gc_comparison': '各基因GC含量对比',
+            'pairing_comparison': '各基因配对率对比',
+            'base_pairs_comparison': '各基因碱基对数量',
+            'stem_comparison': '各基因茎区数量',
+            'energy_comparison': '各基因预测自由能',
+            'length_vs_pairing': '序列长度 vs 配对率',
+            'comprehensive_report': 'SARS-CoV-2 RNA结构综合分析报告',
+            'not_found': '未发现明显基序',
+        },
+        'en': {  # 英文标签
+            'nucleotide_position': 'Nucleotide Position',
+            'sequence_length': 'Sequence Length (nt)',
+            'gc_content': 'GC Content (%)',
+            'conservation_score': 'Conservation Score',
+            'pairing_rate': 'Pairing Rate (%)',
+            'base_pairs': 'Number of Base Pairs',
+            'stem_count': 'Number of Stems',
+            'structure_state': 'Structure State',
+            'pairing_height': 'Pairing Height',
+            'stem_region': 'Stem',
+            'unpaired': 'Unpaired',
+            'loop_region': 'Loop',
+            'sequence_structure': 'Sequence-Structure Correspondence',
+            'structure_features': 'Structure Features',
+            'basic_stats': 'Basic Statistics',
+            'sequence_composition': 'Sequence Composition',
+            'motif_distribution': 'Motif Distribution',
+            'sequence_info': 'Sequence Information',
+            'quantity': 'Quantity',
+            'conservation': 'Conservation',
+            'structure_complexity': 'Complexity',
+            'free_energy': 'Free Energy (kcal/mol)',
+            'complexity_score': 'Complexity Score',
+            'analysis_summary': 'Analysis Summary',
+            'main_findings': 'Main Findings',
+            'longest_sequence': 'Longest Sequence',
+            'highest_gc': 'Highest GC Content',
+            'highest_pairing': 'Highest Pairing Rate',
+            'gene_count': 'Number of Genes Analyzed',
+            'avg_length': 'Average Sequence Length',
+            'avg_gc': 'Average GC Content',
+            'avg_pairing': 'Average Pairing Rate',
+            'total_base_pairs': 'Total Base Pairs',
+            'length_comparison': 'Sequence Length Comparison',
+            'gc_comparison': 'GC Content Comparison',
+            'pairing_comparison': 'Pairing Rate Comparison',
+            'base_pairs_comparison': 'Number of Base Pairs',
+            'stem_comparison': 'Number of Stems',
+            'energy_comparison': 'Predicted Free Energy',
+            'length_vs_pairing': 'Length vs Pairing Rate',
+            'comprehensive_report': 'SARS-CoV-2 RNA Structure Comprehensive Analysis',
+            'not_found': 'No obvious motifs found',
+        }
+    }
+
+    def __init__(self, language='auto'):
+        """
+        初始化可视化器
+        Args:
+            language: 语言选项 ('auto', 'zh', 'en')
+                     'auto' 会自动检测是否有中文字体
+        """
         self.figures_dir = Path("results/figures")
         self.figures_dir.mkdir(parents=True, exist_ok=True)
         self.structures_dir = Path("data/structures")
-        
+
+        # 自动选择语言
+        if language == 'auto':
+            # 检查是否使用DejaVu Sans(表示没有中文字体)
+            if chinese_font == 'DejaVu Sans':
+                self.language = 'en'
+                logger.info("未检测到中文字体,使用英文标签")
+            else:
+                self.language = 'zh'
+                logger.info(f"使用中文标签 (字体: {chinese_font})")
+        else:
+            self.language = language
+
         # 设置颜色方案
         self.colors = {
             'stem': '#2E86AB',
@@ -52,6 +197,10 @@ class RNAStructureVisualizer:
             'multibranch': '#C73E1D',
             'unpaired': '#6C757D'
         }
+
+    def get_label(self, key):
+        """获取指定语言的标签"""
+        return self.LABELS.get(self.language, self.LABELS['zh']).get(key, key)
     
     def plot_structure_2d_forgi(self, gene_name: str, structure: str, sequence: str) -> bool:
         """
@@ -119,13 +268,13 @@ class RNAStructureVisualizer:
             sequence: RNA序列
         """
         logger.info(f"绘制{gene_name}的简化结构图...")
-        
+
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8))
-        
+
         # 上图：序列和结构对应图
         positions = list(range(len(sequence)))
         colors = []
-        
+
         for char in structure:
             if char == '(':
                 colors.append(self.colors['stem'])
@@ -135,31 +284,31 @@ class RNAStructureVisualizer:
                 colors.append(self.colors['unpaired'])
             else:
                 colors.append(self.colors['loop'])
-        
+
         # 绘制序列-结构对应
         for i, (pos, char, color) in enumerate(zip(positions, sequence, colors)):
             ax1.bar(i, 1, color=color, alpha=0.8, width=1.0)
             if i % 10 == 0:  # 每10个位置标记一个
                 ax1.text(i, 0.5, char, ha='center', va='center', fontsize=8)
-        
+
         ax1.set_xlim(-1, len(sequence))
         ax1.set_ylim(0, 1.2)
-        ax1.set_title(f"{gene_name} 序列-结构对应图", fontsize=12, fontweight='bold')
-        ax1.set_xlabel("核苷酸位置")
-        ax1.set_ylabel("结构状态")
-        
+        ax1.set_title(f"{gene_name} {self.get_label('sequence_structure')}", fontsize=12, fontweight='bold')
+        ax1.set_xlabel(self.get_label('nucleotide_position'))
+        ax1.set_ylabel(self.get_label('structure_state'))
+
         # 添加图例
         legend_elements = [
-            plt.Rectangle((0,0),1,1, color=self.colors['stem'], label='茎区'),
-            plt.Rectangle((0,0),1,1, color=self.colors['unpaired'], label='未配对'),
-            plt.Rectangle((0,0),1,1, color=self.colors['loop'], label='环区')
+            plt.Rectangle((0,0),1,1, color=self.colors['stem'], label=self.get_label('stem_region')),
+            plt.Rectangle((0,0),1,1, color=self.colors['unpaired'], label=self.get_label('unpaired')),
+            plt.Rectangle((0,0),1,1, color=self.colors['loop'], label=self.get_label('loop_region'))
         ]
         ax1.legend(handles=legend_elements, loc='upper right')
-        
+
         # 下图：结构弧线图
         ax2.set_xlim(-1, len(sequence))
         ax2.set_ylim(-1, len(sequence))
-        
+
         # 绘制配对弧线
         stack = []
         for i, char in enumerate(structure):
@@ -171,20 +320,20 @@ class RNAStructureVisualizer:
                 x = np.linspace(start, i, 50)
                 y = np.sqrt(np.maximum(0, (i-start)**2/4 - (x - (start+i)/2)**2))
                 ax2.plot(x, y, color=self.colors['stem'], alpha=0.6, linewidth=1)
-        
+
         # 绘制序列轴线
         ax2.plot([0, len(sequence)], [0, 0], 'k-', linewidth=2)
-        ax2.set_title(f"{gene_name} RNA二级结构弧线图", fontsize=12, fontweight='bold')
-        ax2.set_xlabel("核苷酸位置")
-        ax2.set_ylabel("配对高度")
-        
+        ax2.set_title(f"{gene_name} RNA Secondary Structure Arc Plot", fontsize=12, fontweight='bold')
+        ax2.set_xlabel(self.get_label('nucleotide_position'))
+        ax2.set_ylabel(self.get_label('pairing_height'))
+
         plt.tight_layout()
-        
+
         # 保存图形
         output_file = self.figures_dir / f"{gene_name}_simple_structure.png"
         plt.savefig(output_file, dpi=300, bbox_inches='tight')
         plt.close()
-        
+
         logger.info(f"简化结构图已保存: {output_file}")
     
     def plot_conservation_heatmap(self, conservation_data: Dict, gene_name: str):
@@ -235,18 +384,18 @@ class RNAStructureVisualizer:
                       vmin=0, vmax=1, interpolation='nearest')
         
         # 设置坐标轴
-        ax.set_xlabel("核苷酸位置", fontsize=12)
-        ax.set_ylabel("保守性", fontsize=12)
-        ax.set_title(f"{gene_name} 序列保守性分析", fontsize=14, fontweight='bold')
-        
+        ax.set_xlabel(self.get_label('nucleotide_position'), fontsize=12)
+        ax.set_ylabel(self.get_label('conservation'), fontsize=12)
+        ax.set_title(f"{gene_name} {self.get_label('conservation_score')} Analysis", fontsize=14, fontweight='bold')
+
         # 设置x轴刻度
         step = max(1, len(positions) // 10)
         ax.set_xticks(range(0, len(positions), step))
         ax.set_xticklabels([positions[i] for i in range(0, len(positions), step)])
-        
+
         # 添加颜色条
         cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('保守性分数', rotation=270, labelpad=15)
+        cbar.set_label(self.get_label('conservation_score'), rotation=270, labelpad=15)
         
         # 标记高保守性区域
         threshold = np.percentile(plot_scores, 80)  # 前20%为高保守性
@@ -279,36 +428,36 @@ class RNAStructureVisualizer:
         
         # 1. 基本统计信息
         basic_stats = {
-            '序列长度': features_data.get('sequence_length', 0),
-            '碱基对数': features_data.get('base_pairs', 0),
-            '茎区数': features_data.get('stem_count', 0),
-            '环区数': features_data.get('loop_count', 0)
+            self.get_label('sequence_length'): features_data.get('sequence_length', 0),
+            self.get_label('base_pairs'): features_data.get('base_pairs', 0),
+            self.get_label('stem_count'): features_data.get('stem_count', 0),
+            'Loop Count': features_data.get('loop_count', 0)
         }
-        
-        bars1 = ax1.bar(basic_stats.keys(), basic_stats.values(), 
+
+        bars1 = ax1.bar(basic_stats.keys(), basic_stats.values(),
                        color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
-        ax1.set_title('基本结构统计', fontweight='bold')
-        ax1.set_ylabel('数量')
-        
+        ax1.set_title(self.get_label('basic_stats'), fontweight='bold')
+        ax1.set_ylabel(self.get_label('quantity'))
+
         # 添加数值标签
         for bar, value in zip(bars1, basic_stats.values()):
             ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
                     str(value), ha='center', va='bottom')
-        
+
         # 2. 配对率和GC含量
         composition_data = {
-            '配对率': features_data.get('pairing_percentage', 0),
-            'GC含量': features_data.get('gc_content', 0),
-            '未配对率': 100 - features_data.get('pairing_percentage', 0)
+            self.get_label('pairing_rate'): features_data.get('pairing_percentage', 0),
+            self.get_label('gc_content'): features_data.get('gc_content', 0),
+            'Unpaired Rate': 100 - features_data.get('pairing_percentage', 0)
         }
-        
+
         colors2 = ['#2E86AB', '#A23B72', '#F18F01']
-        wedges, texts, autotexts = ax2.pie(composition_data.values(), 
+        wedges, texts, autotexts = ax2.pie(composition_data.values(),
                                           labels=composition_data.keys(),
                                           colors=colors2, autopct='%1.1f%%',
                                           startangle=90)
-        ax2.set_title('序列组成分析', fontweight='bold')
-        
+        ax2.set_title(self.get_label('sequence_composition'), fontweight='bold')
+
         # 3. 结构基序分布
         motifs = features_data.get('motifs', [])
         if motifs:
@@ -316,30 +465,30 @@ class RNAStructureVisualizer:
             for motif in motifs:
                 motif_type = motif.get('type', 'unknown')
                 motif_types[motif_type] = motif_types.get(motif_type, 0) + 1
-            
+
             bars3 = ax3.bar(motif_types.keys(), motif_types.values(),
                            color='#C73E1D')
-            ax3.set_title('结构基序分布', fontweight='bold')
-            ax3.set_ylabel('数量')
-            
+            ax3.set_title(self.get_label('motif_distribution'), fontweight='bold')
+            ax3.set_ylabel(self.get_label('quantity'))
+
             # 添加数值标签
             for bar, value in zip(bars3, motif_types.values()):
                 ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
                         str(value), ha='center', va='bottom')
         else:
-            ax3.text(0.5, 0.5, '未发现明显基序', ha='center', va='center',
+            ax3.text(0.5, 0.5, self.get_label('not_found'), ha='center', va='center',
                     transform=ax3.transAxes, fontsize=12)
-            ax3.set_title('结构基序分布', fontweight='bold')
-        
+            ax3.set_title(self.get_label('motif_distribution'), fontweight='bold')
+
         # 4. 长度分布（如果有多个基因的数据）
-        ax4.text(0.5, 0.5, f'序列长度:\n{features_data.get("sequence_length", 0)} nt\n\n'
-                          f'结构复杂度:\n{features_data.get("base_pairs", 0)} 个碱基对',
+        ax4.text(0.5, 0.5, f'{self.get_label("sequence_length")}:\n{features_data.get("sequence_length", 0)} nt\n\n'
+                          f'{self.get_label("structure_complexity")}:\n{features_data.get("base_pairs", 0)} base pairs',
                 ha='center', va='center', transform=ax4.transAxes, fontsize=12,
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue"))
-        ax4.set_title('序列信息', fontweight='bold')
+        ax4.set_title(self.get_label('sequence_info'), fontweight='bold')
         ax4.axis('off')
-        
-        plt.suptitle(f'{gene_name} RNA结构特征分析', fontsize=16, fontweight='bold')
+
+        plt.suptitle(f'{gene_name} RNA {self.get_label("structure_features")} Analysis', fontsize=16, fontweight='bold')
         plt.tight_layout()
         
         # 保存图形
@@ -454,8 +603,8 @@ class RNAStructureVisualizer:
                 lengths.append(all_predictions[gene]['structural_features'].get('sequence_length', 0))
         
         bars1 = ax1.bar(genes, lengths, color='#1f77b4')
-        ax1.set_title('各基因序列长度对比', fontweight='bold')
-        ax1.set_ylabel('长度 (nt)')
+        ax1.set_title(self.get_label('length_comparison'), fontweight='bold')
+        ax1.set_ylabel(self.get_label('sequence_length'))
         plt.xticks(rotation=45)
         
         # 添加数值标签
@@ -471,46 +620,46 @@ class RNAStructureVisualizer:
                 gc_contents.append(all_predictions[gene]['structural_features'].get('gc_content', 0))
         
         bars2 = ax2.bar(genes, gc_contents, color='#ff7f0e')
-        ax2.set_title('各基因GC含量对比', fontweight='bold')
-        ax2.set_ylabel('GC含量 (%)')
+        ax2.set_title(self.get_label('gc_comparison'), fontweight='bold')
+        ax2.set_ylabel(self.get_label('gc_content'))
         plt.xticks(rotation=45)
-        
+
         # 3. 配对率对比
         ax3 = plt.subplot(3, 3, 3)
         pairing_rates = []
         for gene in genes:
             if 'structural_features' in all_predictions[gene]:
                 pairing_rates.append(all_predictions[gene]['structural_features'].get('pairing_percentage', 0))
-        
+
         bars3 = ax3.bar(genes, pairing_rates, color='#2ca02c')
-        ax3.set_title('各基因配对率对比', fontweight='bold')
-        ax3.set_ylabel('配对率 (%)')
+        ax3.set_title(self.get_label('pairing_comparison'), fontweight='bold')
+        ax3.set_ylabel(self.get_label('pairing_rate'))
         plt.xticks(rotation=45)
-        
+
         # 4. 碱基对数量
         ax4 = plt.subplot(3, 3, 4)
         base_pairs = []
         for gene in genes:
             if 'structural_features' in all_predictions[gene]:
                 base_pairs.append(all_predictions[gene]['structural_features'].get('base_pairs', 0))
-        
+
         bars4 = ax4.bar(genes, base_pairs, color='#d62728')
-        ax4.set_title('各基因碱基对数量', fontweight='bold')
-        ax4.set_ylabel('碱基对数量')
+        ax4.set_title(self.get_label('base_pairs_comparison'), fontweight='bold')
+        ax4.set_ylabel(self.get_label('base_pairs'))
         plt.xticks(rotation=45)
-        
+
         # 5. 茎区数量
         ax5 = plt.subplot(3, 3, 5)
         stem_counts = []
         for gene in genes:
             if 'structural_features' in all_predictions[gene]:
                 stem_counts.append(all_predictions[gene]['structural_features'].get('stem_count', 0))
-        
+
         bars5 = ax5.bar(genes, stem_counts, color='#9467bd')
-        ax5.set_title('各基因茎区数量', fontweight='bold')
-        ax5.set_ylabel('茎区数量')
+        ax5.set_title(self.get_label('stem_comparison'), fontweight='bold')
+        ax5.set_ylabel(self.get_label('stem_count'))
         plt.xticks(rotation=45)
-        
+
         # 6. 能量对比
         ax6 = plt.subplot(3, 3, 6)
         energies = []
@@ -519,11 +668,11 @@ class RNAStructureVisualizer:
             if 'rnafold' in all_predictions[gene] and all_predictions[gene]['rnafold'].get('energy'):
                 energies.append(all_predictions[gene]['rnafold']['energy'])
                 gene_names_energy.append(gene)
-        
+
         if energies:
             bars6 = ax6.bar(gene_names_energy, energies, color='#8c564b')
-            ax6.set_title('各基因预测自由能', fontweight='bold')
-            ax6.set_ylabel('自由能 (kcal/mol)')
+            ax6.set_title(self.get_label('energy_comparison'), fontweight='bold')
+            ax6.set_ylabel(self.get_label('free_energy'))
             plt.xticks(rotation=45)
             ax6.axhline(y=0, color='black', linestyle='-', alpha=0.3)
         
@@ -533,10 +682,10 @@ class RNAStructureVisualizer:
             scatter = ax7.scatter(lengths, pairing_rates, 
                                  s=100, c=gc_contents, 
                                  cmap='viridis', alpha=0.7)
-            ax7.set_xlabel('序列长度 (nt)')
-            ax7.set_ylabel('配对率 (%)')
-            ax7.set_title('序列长度 vs 配对率', fontweight='bold')
-            plt.colorbar(scatter, ax=ax7, label='GC含量 (%)')
+            ax7.set_xlabel(self.get_label('sequence_length'))
+            ax7.set_ylabel(self.get_label('pairing_rate'))
+            ax7.set_title(self.get_label('length_vs_pairing'), fontweight='bold')
+            plt.colorbar(scatter, ax=ax7, label=self.get_label('gc_content'))
             
             # 添加基因标签
             for i, gene in enumerate(genes):
@@ -554,40 +703,40 @@ class RNAStructureVisualizer:
                 complexity_scores.append(complexity)
         
         bars8 = ax8.bar(genes, complexity_scores, color='#e377c2')
-        ax8.set_title('各基因结构复杂度', fontweight='bold')
-        ax8.set_ylabel('复杂度评分')
+        ax8.set_title(self.get_label('structure_complexity') + ' Comparison', fontweight='bold')
+        ax8.set_ylabel(self.get_label('complexity_score'))
         plt.xticks(rotation=45)
-        
+
         # 9. 总结统计表
         ax9 = plt.subplot(3, 3, 9)
         ax9.axis('off')
-        
+
         # 创建统计表格
-        summary_text = "分析总结:\n\n"
-        summary_text += f"分析基因数: {len(genes)}\n"
-        summary_text += f"平均序列长度: {np.mean(lengths):.1f} nt\n"
-        summary_text += f"平均GC含量: {np.mean(gc_contents):.1f}%\n"
-        summary_text += f"平均配对率: {np.mean(pairing_rates):.1f}%\n"
-        summary_text += f"总碱基对数: {sum(base_pairs)}\n\n"
-        summary_text += "主要发现:\n"
-        
+        summary_text = f"{self.get_label('analysis_summary')}:\n\n"
+        summary_text += f"{self.get_label('gene_count')}: {len(genes)}\n"
+        summary_text += f"{self.get_label('avg_length')}: {np.mean(lengths):.1f} nt\n"
+        summary_text += f"{self.get_label('avg_gc')}: {np.mean(gc_contents):.1f}%\n"
+        summary_text += f"{self.get_label('avg_pairing')}: {np.mean(pairing_rates):.1f}%\n"
+        summary_text += f"{self.get_label('total_base_pairs')}: {sum(base_pairs)}\n\n"
+        summary_text += f"{self.get_label('main_findings')}:\n"
+
         # 找出最长序列
         max_len_gene = genes[np.argmax(lengths)]
-        summary_text += f"• 最长序列: {max_len_gene} ({max(lengths)} nt)\n"
-        
+        summary_text += f"• {self.get_label('longest_sequence')}: {max_len_gene} ({max(lengths)} nt)\n"
+
         # 找出最高GC含量
         max_gc_gene = genes[np.argmax(gc_contents)]
-        summary_text += f"• 最高GC含量: {max_gc_gene} ({max(gc_contents):.1f}%)\n"
-        
+        summary_text += f"• {self.get_label('highest_gc')}: {max_gc_gene} ({max(gc_contents):.1f}%)\n"
+
         # 找出最高配对率
         max_pairing_gene = genes[np.argmax(pairing_rates)]
-        summary_text += f"• 最高配对率: {max_pairing_gene} ({max(pairing_rates):.1f}%)"
-        
-        ax9.text(0.1, 0.9, summary_text, transform=ax9.transAxes, 
+        summary_text += f"• {self.get_label('highest_pairing')}: {max_pairing_gene} ({max(pairing_rates):.1f}%)"
+
+        ax9.text(0.1, 0.9, summary_text, transform=ax9.transAxes,
                 fontsize=11, verticalalignment='top',
                 bbox=dict(boxstyle="round,pad=0.5", facecolor="lightblue", alpha=0.8))
-        
-        plt.suptitle('SARS-CoV-2 RNA结构综合分析报告', fontsize=18, fontweight='bold')
+
+        plt.suptitle(self.get_label('comprehensive_report'), fontsize=18, fontweight='bold')
         plt.tight_layout()
         
         # 保存综合报告图
@@ -600,14 +749,14 @@ class RNAStructureVisualizer:
 def main():
     """主函数"""
     logger.info("开始RNA结构可视化...")
-    
-    # 创建可视化器
-    visualizer = RNAStructureVisualizer()
-    
+
+    # 创建可视化器 - 使用auto模式自动选择语言
+    visualizer = RNAStructureVisualizer(language='auto')
+
     # 读取预测结果
     structures_dir = Path("data/structures")
     all_predictions = {}
-    
+
     for json_file in structures_dir.glob("*_prediction.json"):
         try:
             with open(json_file, 'r', encoding='utf-8') as f:
@@ -625,21 +774,37 @@ def main():
             from Bio import SeqIO
             record = SeqIO.read(sequence_file, "fasta")
             sequence = str(record.seq)
-            
+
             # 获取结构信息
             if 'rnafold' in prediction:
                 structure = prediction['rnafold']['structure']
-                
+
                 # 生成各种可视化
                 visualizer.plot_structure_simple(gene_name, structure, sequence)
-                
+
                 visualizer.plot_structure_2d_forgi(gene_name, structure, sequence)
-                
+
                 visualizer.create_interactive_plot(gene_name, sequence, structure)
-            
+
             # 绘制结构特征
             if 'structural_features' in prediction:
                 visualizer.plot_structure_features(prediction['structural_features'], gene_name)
+
+            # 绘制保守性热图（从tables文件夹读取数据）
+            conservation_file = Path(f"results/tables/{gene_name}_conservation.json")
+            if conservation_file.exists():
+                try:
+                    with open(conservation_file, 'r', encoding='utf-8') as f:
+                        conservation_data = json.load(f)
+                        # 提取sequence_conservation数据
+                        if 'sequence_conservation' in conservation_data:
+                            seq_cons = conservation_data['sequence_conservation']
+                            # 添加scores字段（向后兼容）
+                            if 'conservation_scores' in seq_cons and 'scores' not in seq_cons:
+                                seq_cons['scores'] = seq_cons['conservation_scores']
+                            visualizer.plot_conservation_heatmap(seq_cons, gene_name)
+                except Exception as e:
+                    logger.warning(f"绘制保守性热图失败: {e}")
     
     # 生成综合报告
     if all_predictions:
